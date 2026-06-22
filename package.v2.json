@@ -4,10 +4,10 @@
   "description": "自动签到 UBits.club，支持定时签到、结果通知。",
   "labels": "签到",
   "version": "1.2",
-  "icon": "https://raw.githubusercontent.com/HoongDou/MoviePilot-Plugins/main/icons/signin.png",
+  "icon": "signin.png",
   "author": "HoongDou",
   "author_url": "https://github.com/HoongDou",
-  "system_version": ">=2.0.0",
+  "system_version": ">=2.12.0",
   "level": 1,
   "history":{
     "v1.2": "优化了签到返回页，能大概率匹配",
