@@ -9,6 +9,7 @@
   "author_url": "https://github.com/HoongDou",
   "system_version": ">=2.12.0",
   "level": 1,
+  "release": true,
   "history":{
     "v1.2": "优化了签到返回页，能大概率匹配",
     "v1.1": "移除了不用的库",
