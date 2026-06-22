@@ -1,5 +1,3 @@
-# plugins.v2/ubitsignin/__init__.py
-
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -315,9 +313,8 @@ class UBitsSignIn(_PluginBase):
 
     def get_page(self) -> List[dict]:
         """
-        详情页：展示最近 14 天签到历史
+        详情页：展示最近 30 条签到历史
         """
-        # 读取历史记录
         history: List[dict] = self.get_data("history") or []
 
         if not history:
@@ -333,7 +330,6 @@ class UBitsSignIn(_PluginBase):
                 }
             ]
 
-        # 最新记录在前，最多展示 30 条
         history = list(reversed(history))[:30]
 
         rows = []
@@ -439,7 +435,6 @@ class UBitsSignIn(_PluginBase):
 
         logger.info(f"UBits 签到结果：{message}")
 
-        # 发送通知
         if self._notify:
             self.post_message(
                 title="【UBits 自动签到】",
@@ -472,7 +467,6 @@ class UBitsSignIn(_PluginBase):
             ).get_res(url=self._signin_url)
 
             if res is None:
-                # attendance.php 无响应时退回首页判断 Cookie 是否还有效
                 logger.info("UBits 签到：attendance.php 无响应，尝试访问首页")
                 res = RequestUtils(
                     cookies=self._cookie,
@@ -490,32 +484,32 @@ class UBitsSignIn(_PluginBase):
             if under_challenge(res.text):
                 return False, "签到失败，被 Cloudflare 拦截，建议开启代理"
 
-            # Cookie 失效
-            if not SiteUtils.is_logged_in(res.text):
-                return False, "签到失败，Cookie 已失效，请重新填写"
+            # 解析签到结果
 
-            # ---- 解析签到结果 ----
-
-            # 今日已签到
-            if re.search(r"签到已得|已经签到|今日已签|重复签到", res.text, re.IGNORECASE):
-                return True, "今日已签到"
-
-            # 尝试提取奖励数量，NexusPHP 常见格式：
-            # "签到成功，获得魔力值 xx"  /  "签到已得 xx U币"
+            # 1. 本次签到成功，提取奖励 U币
+            #    页面格式：本次签到获得 <b>10</b> 个U币
             bonus_match = re.search(
-                r"(?:签到成功|签到已得)[^\d]{0,10}(\d+)[^\d]{0,5}(?:[Uu]币|魔力|积分|bonus)",
+                r"本次签到获得\s*<[^>]+>\s*(\d+)\s*</[^>]+>\s*个U币",
                 res.text,
-                re.IGNORECASE,
             )
             if bonus_match:
                 return True, f"签到成功，获得 {bonus_match.group(1)} U币"
 
-            # 通用成功关键词
-            if re.search(r"签到成功|感谢签到|签到奖励", res.text, re.IGNORECASE):
+            # 2. 页面标题含"签到成功"（兜底，防止页面结构变化）
+            if re.search(r"<h2[^>]*>\s*签到成功\s*</h2>", res.text):
                 return True, "签到成功"
 
-            # 能登录就算成功，等测试后再细化
-            return True, "签到完成（未识别到具体返回文字，页面内容待更新）"
+            # 3. 今日已签到 — 导航栏出现"签到已得N"说明之前已签过
+            already_match = re.search(r"签到已得(\d+)", res.text)
+            if already_match:
+                return True, f"今日已签到，已得 {already_match.group(1)} U币"
+
+            # 4. Cookie 失效
+            if not SiteUtils.is_logged_in(res.text):
+                return False, "签到失败，Cookie 已失效，请重新填写"
+
+            # 5. 能登录但未识别到具体结果
+            return True, "签到完成（未识别到具体返回文字）"
 
         except Exception as e:
             logger.error(f"UBits 签到异常：{e}")
