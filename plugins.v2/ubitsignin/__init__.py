@@ -13,8 +13,6 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas.types import EventType, NotificationType
 from app.utils.http import RequestUtils
-from app.utils.site import SiteUtils
-
 
 
 class UBitsSignIn(_PluginBase):
@@ -22,10 +20,10 @@ class UBitsSignIn(_PluginBase):
     plugin_name = "UBits 自动签到"
     # 插件描述
     plugin_desc = "自动签到 UBits.club，支持定时签到、结果通知。"
-    # 插件图标
+    # 插件图标，建议放在 plugins.v2/ubitsignin/signin.png
     plugin_icon = "signin.png"
     # 插件版本
-    plugin_version = "1.2"
+    plugin_version = "1.2.0"
     # 插件作者
     plugin_author = "HoongDou"
     # 作者主页
@@ -37,7 +35,7 @@ class UBitsSignIn(_PluginBase):
     # 可使用的用户级别
     auth_level = 1
 
-    # 定时器
+    # 定时器，仅用于立即运行一次
     _scheduler: Optional[BackgroundScheduler] = None
 
     # 配置属性
@@ -54,7 +52,10 @@ class UBitsSignIn(_PluginBase):
     _site_url = "https://ubits.club/"
 
     def init_plugin(self, config: dict = None):
-        # 停止已有任务
+        """
+        初始化插件配置。
+        MoviePilot 会在插件加载、保存配置后调用。
+        """
         self.stop_service()
 
         config = config or {}
@@ -66,18 +67,25 @@ class UBitsSignIn(_PluginBase):
         self._ua = config.get("ua") or ""
         self._proxy = bool(config.get("proxy"))
 
-        # 立即运行一次
         if self._onlyonce:
+            self._run_once()
+
+    def _run_once(self):
+        """
+        立即运行一次。
+        使用独立 BackgroundScheduler，避免影响 MoviePilot 全局服务调度。
+        """
+        try:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-            logger.info("UBits 自动签到：立即运行一次")
+            logger.info("UBits 自动签到：准备立即运行一次")
+
             self._scheduler.add_job(
                 func=self.sign_in,
                 trigger="date",
-                run_date=datetime.now(tz=pytz.timezone(settings.TZ))
-                + timedelta(seconds=3),
-                name="UBits 签到",
+                run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                name="UBits 自动签到",
             )
-            # 关闭一次性开关并保存
+
             self._onlyonce = False
             self._save_config()
 
@@ -85,10 +93,16 @@ class UBitsSignIn(_PluginBase):
                 self._scheduler.print_jobs()
                 self._scheduler.start()
 
+        except Exception as e:
+            logger.error(f"UBits 自动签到：立即运行任务创建失败：{e}")
+
     def get_state(self) -> bool:
         return self._enabled
 
     def _save_config(self):
+        """
+        保存当前配置。
+        """
         self.update_config(
             {
                 "enabled": self._enabled,
@@ -103,6 +117,9 @@ class UBitsSignIn(_PluginBase):
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
+        """
+        注册远程命令。
+        """
         return [
             {
                 "cmd": "/ubits_signin",
@@ -117,8 +134,12 @@ class UBitsSignIn(_PluginBase):
         return []
 
     def get_service(self) -> List[Dict[str, Any]]:
+        """
+        注册 MoviePilot 定时服务。
+        """
         if not self._enabled or not self._cron:
             return []
+
         try:
             return [
                 {
@@ -130,15 +151,17 @@ class UBitsSignIn(_PluginBase):
                 }
             ]
         except Exception as err:
-            logger.error(f"UBits 签到定时任务配置错误：{err}")
+            logger.error(f"UBits 自动签到：定时任务配置错误：{err}")
             return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        插件配置页面。
+        """
         return [
             {
                 "component": "VForm",
                 "content": [
-                    # 第一行：开关
                     {
                         "component": "VRow",
                         "content": [
@@ -196,7 +219,6 @@ class UBitsSignIn(_PluginBase):
                             },
                         ],
                     },
-                    # 第二行：执行周期
                     {
                         "component": "VRow",
                         "content": [
@@ -216,7 +238,6 @@ class UBitsSignIn(_PluginBase):
                             }
                         ],
                     },
-                    # 第三行：Cookie
                     {
                         "component": "VRow",
                         "content": [
@@ -229,14 +250,13 @@ class UBitsSignIn(_PluginBase):
                                         "props": {
                                             "model": "cookie",
                                             "label": "Cookie",
-                                            "placeholder": "登录 UBits.club 后从浏览器复制 Cookie",
+                                            "placeholder": "登录 UBits.club 后从浏览器复制完整 Cookie",
                                         },
                                     }
                                 ],
                             }
                         ],
                     },
-                    # 第四行：UA
                     {
                         "component": "VRow",
                         "content": [
@@ -249,14 +269,13 @@ class UBitsSignIn(_PluginBase):
                                         "props": {
                                             "model": "ua",
                                             "label": "User-Agent",
-                                            "placeholder": "留空使用默认 UA",
+                                            "placeholder": "建议填写获取 Cookie 时同一浏览器的 User-Agent",
                                         },
                                     }
                                 ],
                             }
                         ],
                     },
-                    # 说明
                     {
                         "component": "VRow",
                         "content": [
@@ -269,10 +288,11 @@ class UBitsSignIn(_PluginBase):
                                         "props": {
                                             "type": "info",
                                             "variant": "tonal",
-                                            "text": "Cookie 获取方法：登录 UBits.club 后，"
-                                            "按 F12 打开开发者工具，"
-                                            "在 Application → Cookies 中复制所有 Cookie，"
-                                            "或在 Network 请求头中复制 cookie 字段。",
+                                            "text": (
+                                                "Cookie 获取方法：登录 UBits.club 后，"
+                                                "按 F12 打开开发者工具，在 Application -> Cookies 中复制 Cookie，"
+                                                "或在 Network 请求头中复制 cookie 字段。"
+                                            ),
                                         },
                                     }
                                 ],
@@ -291,8 +311,10 @@ class UBitsSignIn(_PluginBase):
                                         "props": {
                                             "type": "warning",
                                             "variant": "tonal",
-                                            "text": "Cookie 有效期有限，失效后需重新填写。"
-                                            "签到成功不等同于站点认定为活跃，请结合站点公告自行判断。",
+                                            "text": (
+                                                "如果站点启用了 Cloudflare，Cookie 里通常需要包含 cf_clearance，"
+                                                "并且 User-Agent 要和获取 Cookie 时保持一致。"
+                                            ),
                                         },
                                     }
                                 ],
@@ -313,7 +335,7 @@ class UBitsSignIn(_PluginBase):
 
     def get_page(self) -> List[dict]:
         """
-        详情页：展示最近 30 条签到历史
+        插件详情页，展示最近 30 条签到历史。
         """
         history: List[dict] = self.get_data("history") or []
 
@@ -359,9 +381,7 @@ class UBitsSignIn(_PluginBase):
                                         "color": "success" if success else "error",
                                         "size": "small",
                                     },
-                                    "text": "mdi-check-circle"
-                                    if success
-                                    else "mdi-alert-circle",
+                                    "text": "mdi-check-circle" if success else "mdi-alert-circle",
                                 }
                             ],
                         },
@@ -407,13 +427,16 @@ class UBitsSignIn(_PluginBase):
     @eventmanager.register(EventType.PluginAction)
     def sign_in(self, event: Event = None):
         """
-        执行签到，可由定时任务、立即运行、远程命令触发
+        执行签到。
+        可由定时任务、立即运行一次、远程命令触发。
         """
         if event:
             event_data = event.event_data or {}
             if event_data.get("action") != "ubits_signin":
                 return
-            logger.info("UBits 签到：收到远程命令")
+
+            logger.info("UBits 自动签到：收到远程命令")
+
             self.post_message(
                 channel=event_data.get("channel"),
                 title="开始 UBits 签到 ...",
@@ -421,19 +444,24 @@ class UBitsSignIn(_PluginBase):
             )
 
         if not self._cookie:
-            logger.warn("UBits 签到：未配置 Cookie，跳过")
+            logger.warning("UBits 自动签到：未配置 Cookie，跳过")
             return
 
         success, message = self._do_signin()
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 追加历史记录，保留最近 30 条
         history: List[dict] = self.get_data("history") or []
-        history.append({"date": now_str, "success": success, "message": message})
+        history.append(
+            {
+                "date": now_str,
+                "success": success,
+                "message": message,
+            }
+        )
         history = history[-30:]
         self.save_data("history", history)
 
-        logger.info(f"UBits 签到结果：{message}")
+        logger.info(f"UBits 自动签到：{message}")
 
         if self._notify:
             self.post_message(
@@ -443,84 +471,192 @@ class UBitsSignIn(_PluginBase):
             )
 
         if event:
+            event_data = event.event_data or {}
             self.post_message(
-                channel=event.event_data.get("channel"),
+                channel=event_data.get("channel"),
                 title=f"UBits 签到{'成功' if success else '失败'}：{message}",
-                userid=event.event_data.get("user"),
+                userid=event_data.get("user"),
             )
 
     def _do_signin(self) -> Tuple[bool, str]:
         """
-        核心签到逻辑：GET attendance.php，解析返回内容
+        核心签到逻辑。
+        使用 Cookie 请求 attendance.php，并根据页面内容判断签到结果。
         """
         proxies = settings.PROXY if self._proxy else None
         timeout = 60
 
-        logger.info(f"UBits 签到：请求 {self._signin_url}")
+        headers = self._build_headers()
+
+        logger.info(f"UBits 自动签到：请求 {self._signin_url}")
 
         try:
             res = RequestUtils(
-                cookies=self._cookie,
-                ua=self._ua or None,
+                headers=headers,
                 proxies=proxies,
                 timeout=timeout,
             ).get_res(url=self._signin_url)
 
             if res is None:
-                logger.info("UBits 签到：attendance.php 无响应，尝试访问首页")
+                logger.warning("UBits 自动签到：attendance.php 无响应，尝试访问首页")
                 res = RequestUtils(
-                    cookies=self._cookie,
-                    ua=self._ua or None,
+                    headers=headers,
                     proxies=proxies,
                     timeout=timeout,
                 ).get_res(url=self._site_url)
+
                 if res is None:
                     return False, "签到失败，无法访问站点"
+
+            logger.info(
+                f"UBits 自动签到：HTTP {res.status_code}，最终地址：{getattr(res, 'url', '')}"
+            )
 
             if res.status_code not in [200, 403, 500]:
                 return False, f"签到失败，状态码：{res.status_code}"
 
-            # Cloudflare 拦截
-            if under_challenge(res.text):
-                return False, "签到失败，被 Cloudflare 拦截，建议开启代理"
+            html = res.text or ""
 
-            # 解析签到结果
+            if under_challenge(html):
+                return False, "签到失败，被 Cloudflare 拦截，请检查代理、Cookie 和 User-Agent"
 
-            # 1. 本次签到成功，提取奖励 U币
-            #    页面格式：本次签到获得 <b>10</b> 个U币
-            bonus_match = re.search(
-                r"本次签到获得\s*<[^>]+>\s*(\d+)\s*</[^>]+>\s*个U币",
-                res.text,
-            )
-            if bonus_match:
-                return True, f"签到成功，获得 {bonus_match.group(1)} U币"
+            if self._is_cookie_invalid(res, html):
+                return False, "签到失败，Cookie 可能已失效，请重新填写"
 
-            # 2. 页面标题含"签到成功"（兜底，防止页面结构变化）
-            if re.search(r"<h2[^>]*>\s*签到成功\s*</h2>", res.text):
-                return True, "签到成功"
+            success, message = self._parse_signin_result(html)
+            if success is not None:
+                return success, message
 
-            # 3. 今日已签到 — 导航栏出现"签到已得N"说明之前已签过
-            already_match = re.search(r"签到已得(\d+)", res.text)
-            if already_match:
-                return True, f"今日已签到，已得 {already_match.group(1)} U币"
-
-            # 4. Cookie 失效
-            if not SiteUtils.is_logged_in(res.text):
-                return False, "签到失败，Cookie 已失效，请重新填写"
-
-            # 5. 能登录但未识别到具体结果
-            return True, "签到完成（未识别到具体返回文字）"
+            return True, "签到完成，但未识别到具体返回文字"
 
         except Exception as e:
-            logger.error(f"UBits 签到异常：{e}")
+            logger.error(f"UBits 自动签到异常：{e}")
             return False, f"签到失败：{e}"
 
+    def _build_headers(self) -> Dict[str, str]:
+        """
+        构造请求头。
+        对 Cloudflare 站点来说，Cookie 和 User-Agent 最好与浏览器保持一致。
+        """
+        user_agent = self._ua or getattr(
+            settings,
+            "USER_AGENT",
+            (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+        )
+
+        return {
+            "Cookie": self._cookie,
+            "User-Agent": user_agent,
+            "Referer": self._site_url,
+            "Origin": self._site_url.rstrip("/"),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+
+    @staticmethod
+    def _is_cookie_invalid(res, html: str) -> bool:
+        """
+        判断 Cookie 是否失效。
+        这里不要过度依赖 MoviePilot 的 SiteUtils，因为不同站点页面结构不同。
+        """
+        final_url = getattr(res, "url", "") or ""
+
+        if "login.php" in final_url:
+            return True
+
+        invalid_keywords = [
+            "login.php",
+            "takelogin.php",
+            "登录",
+            "登入",
+            "用户名",
+            "密码",
+        ]
+
+        logged_in_keywords = [
+            "logout.php",
+            "userdetails.php",
+            "attendance.php",
+            "签到",
+            "控制面板",
+        ]
+
+        has_invalid_keyword = any(keyword in html for keyword in invalid_keywords)
+        has_logged_in_keyword = any(keyword in html for keyword in logged_in_keywords)
+
+        return has_invalid_keyword and not has_logged_in_keyword
+
+    @staticmethod
+    def _parse_signin_result(html: str) -> Tuple[Optional[bool], str]:
+        """
+        解析签到页面结果。
+        返回：
+        - True/False 表示已识别成功或失败
+        - None 表示未识别
+        """
+        bonus_match = re.search(
+            r"本次签到获得\s*<[^>]+>\s*(\d+)\s*</[^>]+>\s*个U币",
+            html,
+            re.S,
+        )
+        if bonus_match:
+            return True, f"签到成功，获得 {bonus_match.group(1)} U币"
+
+        bonus_match = re.search(
+            r"本次签到获得\s*(\d+)\s*个U币",
+            html,
+            re.S,
+        )
+        if bonus_match:
+            return True, f"签到成功，获得 {bonus_match.group(1)} U币"
+
+        if re.search(r"<h2[^>]*>\s*签到成功\s*</h2>", html, re.S):
+            return True, "签到成功"
+
+        already_match = re.search(r"签到已得\s*(\d+)", html, re.S)
+        if already_match:
+            return True, f"今日已签到，已得 {already_match.group(1)} U币"
+
+        already_keywords = [
+            "今天已签到",
+            "今日已签到",
+            "已经签到",
+            "您今天已经签到过",
+        ]
+        if any(keyword in html for keyword in already_keywords):
+            return True, "今日已签到"
+
+        fail_keywords = [
+            "签到失败",
+            "发生错误",
+            "非法请求",
+            "权限不足",
+        ]
+        for keyword in fail_keywords:
+            if keyword in html:
+                return False, f"签到失败，页面提示：{keyword}"
+
+        return None, ""
+
     def stop_service(self):
+        """
+        停止立即运行一次使用的独立调度器。
+        MoviePilot 自身注册的 get_service 定时任务不在这里处理。
+        """
         try:
             if self._scheduler:
                 self._scheduler.remove_all_jobs()
+
                 if self._scheduler.running:
                     self._scheduler.shutdown()
+
                 self._scheduler = None
+
         except Exception as e:
-            logger.error(f"UBits 签到：停止服务失败：{e}")
+            logger.error(f"UBits 自动签到：停止服务失败：{e}")
