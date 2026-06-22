@@ -1,0 +1,17 @@
+{
+"UBitsSignIn": {
+  "name": "UBits 自动签到",
+  "description": "自动签到 UBits.club，支持定时签到、结果通知。",
+  "labels": "签到",
+  "version": "1.0.0",
+  "icon": "signin.png",
+  "author": "HoongDou",
+  "author_url": "https://github.com/HoongDou",
+  "system_version": ">=2.0.0",
+  "level": 1,
+  "history":{
+    "v1.1": "移除了不用的库",
+    "v1.0": "release"
+    }
+  }
+}
