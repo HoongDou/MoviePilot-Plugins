@@ -23,7 +23,7 @@ class UBitsSignIn(_PluginBase):
     # 插件描述
     plugin_desc = "自动签到 UBits.club，支持定时签到、结果通知。"
     # 插件图标
-    plugin_icon = "signin.png"
+    plugin_icon = "https://raw.githubusercontent.com/HoongDou/MoviePilot-Plugins/main/icons/signin.png"
     # 插件版本
     plugin_version = "1.2"
     # 插件作者
@@ -35,7 +35,7 @@ class UBitsSignIn(_PluginBase):
     # 加载顺序
     plugin_order = 15
     # 可使用的用户级别
-    auth_level = 2
+    auth_level = 1
 
     # 定时器
     _scheduler: Optional[BackgroundScheduler] = None
