@@ -12,6 +12,7 @@
   "history":{
     "v1.1": "移除了不用的库",
     "v1.0": "release"
-    }
+    },
+  "release": true
   }
 }
